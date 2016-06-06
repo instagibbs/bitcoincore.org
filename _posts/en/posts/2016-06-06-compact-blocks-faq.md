@@ -14,7 +14,7 @@ version: 1
 
 ## Summary
 
-Using simple techniques it is possible to reduce the amount of bandwidth necessary to propagate new blocks to full nodes when they already share much of the same mempool contents. Peers send compact block “sketches” to receiving peers, including the block header, DoS-resistant short txids, and a few full transactions predicted to be absent from their peer’s mempool. The peer can then respond to that message by requesting for the transactions in the block sketch it is missing, or if it already has a completed block constructed from its mempool, send the already-constructed block to its own peers. In ‘high bandwidth mode’ a node asks a few fast block-relaying peers to send new blocks directly without announcement, which trades off some bandwidth for a further reduction in RTT latency.
+Using simple techniques it is possible to reduce the amount of bandwidth necessary to propagate new blocks to full nodes when they already share much of the same mempool contents. Peers send compact block “sketches” to receiving peers, including the block header, DoS-resistant short txids, and a few full transactions predicted to be absent from their peer’s mempool. The peer can then respond to that message by requesting for the transactions in the block sketch it is missing, or if it already has a completed block constructed from its mempool, send the already-constructed block to its own peers. In ‘high bandwidth mode’ a node asks a few fast block-relaying peers to send new blocks directly without announcement, which trades off some bandwidth for a further reduction in round-trip-time(RTT) latency.
 
 ![Compact Blocks diagram](https://raw.githubusercontent.com/bitcoin/bips/master/bip-0152/protocol-flow.png)
 
