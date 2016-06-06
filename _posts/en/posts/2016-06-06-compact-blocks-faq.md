@@ -14,13 +14,13 @@ version: 1
 
 ## Summary
 
-Using simple techniques it is possible to reduce the amount of bandwidth necessary to propagate new blocks to full nodes when they already share much of the same mempool contents. Peers send compact block “sketches” to receiving peers, including the block header, DoS-resistant short txids, and a few full transactions predicted to be absent from their peer’s mempool. The peer can then respond to that message by requesting for the transactions in the block sketch it is missing, or if it already has a completed block constructed from its mempool, send the already-constructed block to its own peers. In ‘high bandwidth mode’ a node asks a few fast block-relaying peers to send new blocks directly without announcement, which trades off some bandwidth for a further reduction in round-trip-time(RTT) latency.
+Using simple techniques it is possible to reduce the amount of bandwidth necessary to propagate new blocks to full nodes when they already share much of the same mempool contents. Peers send compact block “sketches” to receiving peers, including the block header, DoS-resistant short txids, and a few full transactions predicted to be absent from their peer’s mempool. The peer can then respond to that message by requesting for the transactions in the block sketch it is missing, or if it already has a completed block constructed from its mempool, send the already-constructed block to its own peers. In ‘high bandwidth mode’ a node asks a few fast block-relaying peers to send new blocks directly without announcement, which trades off some bandwidth for a further reduction in round-trip-time (RTT) latency.
 
 ![Compact Blocks diagram](https://raw.githubusercontent.com/bitcoin/bips/master/bip-0152/protocol-flow.png)
 
 ##What are some useful benchmarks for this?
 
-A typical full 1MB block announcement with 2,500 transactions can be recovered by the receiving node with a block sketch of about about 15KB, plus overhead for each transaction in the block that is not in their mempool.
+A typical full 1MB block announcement with 2,500 transactions can be recovered by the receiving node with a block sketch of about 15KB, plus overhead for each transaction in the block that is not in their mempool.
 
 When running live experiments in ‘high bandwidth’ mode and having nodes send up to 6 transactions they predict their peer doesn’t have, we can expect to see around 86% of blocks propagate with 0.5RTT. Without sending the predicted missing transactions, this number typically drops, sometimes to a bit less than 50%, requiring another full RTT to get the complete block for most cases. Even without transaction prediction a dramatic reduction in required peak bandwidth is achieved as the block-mempool differential in a vast majority of cases are fewer than 6 transactions. 
 
@@ -53,7 +53,7 @@ The first version of compact blocks has been assigned BIP152, has a working impl
 
 ## How can this be adapted for miners?
 
-In order to get miner adoption additional improvements to the compact block scheme must be made. These are two-fold: First, replace TCP transmission of block information with UDP transmission. Second, handle dropped packets by using forward error correction(FEC) codes. 
+In order to get miner adoption additional improvements to the compact block scheme must be made. These are two-fold: First, replace TCP transmission of block information with UDP transmission. Second, handle dropped packets by using forward error correction (FEC) codes. 
 
 UDP transmission allows data to be sent by the server and digested by the client as fast as the path allows, without worrying about intermittent dropped packets. A client would rather receive packets out of order to construct the block as fast as possible but TCP does not allow this. In order to deal with the dropped packets, FEC codes will be employed. A FEC code is a method of transforming the data into a redundant code, allowing lossless transmission of the original data as long as any of k-of-n of the packets arrive at its destination, where k is not much larger than the original size of the data.
 
