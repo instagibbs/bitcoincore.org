@@ -14,10 +14,10 @@ version: 1
 
 ## Summary
 
-Using simple techniques it is possible to reduce the amount of bandwidth necessary to propagate new blocks to full nodes when they already share much of the same mempool contents. Peers send compact block “sketches” to receiving peers. These sketchest include the following information:
+Using simple techniques it is possible to reduce the amount of bandwidth necessary to propagate new blocks to full nodes when they already share much of the same mempool contents. Peers send compact block “sketches” to receiving peers. These sketches include the following information:
 
 - The 80-type header of the new block
-- Shortened transaction identifiers (txids), that are encoded to prevent Denial-of-Service (DoS) attacks
+- Shortened transaction identifiers (txids), that are specially designed to prevent Denial-of-Service (DoS) attacks
 - Some full transactions which the sending peer predicts the receiving peer doesn't have yet
 
 The receiving peer then tries to reconstruct the entire block using the received information and the transactions already in its memory pool.  If it is still missing any transactions, it will request those from the transmitting peer.
