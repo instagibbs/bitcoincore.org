@@ -10,39 +10,63 @@ version: 1
 ---
 {% include _toc.html %}
 
-"Compact block relay" is a method of reducing the amount of bandwidth used to propagate new blocks to full nodes.
+*Compact block relay* is a method of reducing the amount of bandwidth used to propagate new blocks to full nodes.
 
 ## Summary
 
-Using simple techniques it is possible to reduce the amount of bandwidth necessary to propagate new blocks to full nodes when they already share much of the same mempool contents. Peers send compact block “sketches” to receiving peers, including the block header, DoS-resistant short txids, and a few full transactions predicted to be absent from their peer’s mempool. The peer can then respond to that message by requesting for the transactions in the block sketch it is missing, or if it already has a completed block constructed from its mempool, send the already-constructed block to its own peers. In ‘high bandwidth mode’ a node asks a few fast block-relaying peers to send new blocks directly without announcement, which trades off some bandwidth for a further reduction in round-trip-time (RTT) latency.
+Using simple techniques it is possible to reduce the amount of bandwidth necessary to transmit new blocks between full nodes when they already have many of the same transactions in their memory pools (mempools). Peers send compact block “sketches” to receiving peers. These sketches include the following information:
+
+- The 80-byte header of the new block
+- Shortened transaction identifiers (txids), that are encoded to prevent Denial-of-Service (DoS) attacks
+- Some full transactions which the sending peer predicts the receiving peer doesn't have yet
+
+The receiving peer then tries to reconstruct the entire block using the received information and the transactions already in its memory pool.  If it is still missing any transactions, it will request those from the transmitting peer.
+
+The advantage of this approach is that transactions only need to be sent once in the best case---when they are originally broadcast---providing a large reduction in overall bandwidth.
+
+In addition, the compact block relay proposal also provides a second mode of operation (called *high bandwidth mode*) where the receiving node asks a few of its peers to send new blocks directly without asking for permission first, which may increase bandwidth (because two peers may try sending the same block at the same time) but which further reduces the amount of time it takes blocks to arrive (latency) on high-bandwidth connections.
+
+The diagram below shows the way nodes currently send blocks compared to compact block relay's two operating modes.
 
 ![Compact Blocks diagram](https://raw.githubusercontent.com/bitcoin/bips/master/bip-0152/protocol-flow.png)
 
+- In **Legacy Relaying,** a block is validated (the grey bar) by Node A, who then sends an `inv` message to Node B requesting permission to send the block.  Node B replies with a request (`getdata`) for the block and Node A sends it.
+
+- In **High Bandwidth Relaying,** Node B uses `sendcmpt(1)` (send compact) to tell Node A that it wants to receive blocks as soon as possible.  When a new block arrives, Node A performs some basic validation (such as validating the block header) and then automatically begins sending the header, shortened txids, and predicted missing transaction (as described above) to Node B.  Node B attempts to reconstruct the block and requests any transactions it is still missing (`getblocktxn`), which Node A sends (`blocktxn`).  In the background, both nodes complete their full validation of the block before adding it to their local copies of the blockchain, maintaining the same full node security as before.
+
+- In **Low Bandwidth Relaying,** Node B uses `sendcmpt(0)` to tell Node A that it wants to minimize bandwidth usage as much as possible.  When a new block arrives, Node A fully validates it (so it doesn't relay any invalid blocks).  Then it asks Node B whether it wants the block (`inv`) so that if Node B has already received the block from another peer, it can avoid downloading it again.  If Node B does want the block, it asks for it in compact mode (`getdata(CMPCT)`) and Node A sends the header, short txids, and predicted missing transactions.  Node B attempts to reconstruct the block, requests any transactions it is still missing, and Node A sends those transactions.  Node B then fully validates the block normally.
+
 ##What are some useful benchmarks for this?
 
-A typical full 1MB block announcement with 2,500 transactions can be recovered by the receiving node with a block sketch of about 15KB, plus overhead for each transaction in the block that is not in their mempool.
+A typical full 1MB block announcement with 2,500 transactions can be reconstructed by the receiving node with a block sketch of about 15KB, plus overhead for each transaction in the block that is not in the receiving node's mempool.
 
-When running live experiments in ‘high bandwidth’ mode and having nodes send up to 6 transactions they predict their peer doesn’t have, we can expect to see around 86% of blocks propagate with 0.5RTT. Without sending the predicted missing transactions, this number typically drops, sometimes to a bit less than 50%, requiring another full RTT to get the complete block for most cases. Even without transaction prediction a dramatic reduction in required peak bandwidth is achieved as the block-mempool differential in a vast majority of cases are fewer than 6 transactions. 
+When running live experiments in ‘high bandwidth’ mode and having nodes send up to 6 transactions they predict their peer doesn’t have, we can expect to see around 86% of blocks propagate immediately without needing to request any missing transactions. Even without sending any transactions that are predicted to be missing, a little bit less than 50% of blocks propagate immediately, with the rest needing a full additional network round trip to request and receive missing transactions.
+
+Since the difference between mempools and blocks is fewer than 6 transactions in most cases, this means that compact block relay achieves a dramatic reduction in required peak bandwidth.
 
 ## How are expected missing transactions chosen to immediately forward?
 
-To reduce the review surface in the initial implementation only the coinbase transaction will be pre-emptively sent. However in the described experiments earlier nodes would choose in-block transactions it didn’t have in mempool to preemptively send. The reasoning is that without additional information, what you don’t know about is likely what your peers don’t know about. With this basic heuristic a large improvement was seen. Many times the simplest solutions are the best.
+To reduce the number of things that need to be reviewed in the initial implementation, only the coinbase transaction will be pre-emptively sent.
+
+However, in the described experiments, the sending node used a simple formula to choose which transactions to send: when Node A received a block, it checked to see which transactions were in the block but not in its mempool; those were the transactions it predicted that its peer didn't have.  The reasoning is that (without additional information) the transactions you didn't know about are probably also the transactions your peers don't know about. With this basic heuristic, a large improvement was seen, illustrating that many times the simplest solutions are the best.
 
 ## Does this scale Bitcoin?
 
-This feature is intended to save peak block bandwidth for nodes, reducing these spikes which can degrade end-user internet experience. However, the centralization pressures of mining exist in a large part due to latency of block propagation, and compact blocks version 1 is not aimed with that end in mind. 
+This feature is intended to save peak block bandwidth for nodes, reducing bandwidth spikes which can degrade end-user internet experience. However, the centralization pressures of mining exist in a large part due to latency of block propagation, as described in the following video. Compact blocks version 1 is not designed to solve that problem.
 
 <iframe width="560" height="315" src="https://www.youtube.com/embed/Y6kibPzbrIc" frameborder="0" allowfullscreen> </iframe>
 
-Instead miners will continue to use the [Fast Relay Network](http://bitcoinrelaynetwork.org/) until a lower-latency or more robust solution is developed.
+Instead it is expected that miners will continue to use the [Fast Relay Network](http://bitcoinrelaynetwork.org/) until a lower-latency or more robust solution is developed.
 
 ## But don’t these compactblock schemes reduce latency?
 
-Compared to the standard p2p block relay, yes. However a typical full node doesn’t care much about a few seconds of delay for blocks. In contrast, for a mining full node this means the making a profit or losing money. The Fast Relay Network targets a .5RTT by keeping track of what transactions have been sent to which peers and directly sending block differentials to its peers once a block is found. This compact block proposal can realistically bring most new block announcements down to .5RTT at the cost of some additional bandwidth and RTT in ‘high bandwidth mode’, but a non-negligible amount of blocks will require 1.5RTT.
+Compared to the standard peer-to-peer block relay, yes. However a typical full node doesn’t care much about a few seconds of delay for blocks. In contrast, every additional second it takes a block to arrive is a second of wasted hash rate for miners. The Fast Relay Network targets the elimination of network round trips by keeping track of what transactions have been sent to which peers and directly sending block differentials to its peers once a block is found.
+
+This compact block proposal can realistically allow most new block announcements to complete with half a network round trip (0.5 Round Trip Time, RTT) at the cost of some additional bandwidth and round trips in ‘high bandwidth mode’. However, it is still the case that some blocks will require one and half round trips (1.5RTT)---which is the same amount they require with the current block relay method.
 
 ## Who benefits from compact blocks?
 
-Full node users that desire to relay transactions but have little internet bandwidth. If you simply want to save the most bandwidth possible while still relaying blocks to peers, there is `blocksonly` mode already available starting in Core v0.12, as transaction relay is the most bandwidth costly activity of a full node.
+Full node users who want to relay transactions but who have limited internet bandwidth. If you simply want to save the most bandwidth possible while still relaying blocks to peers, there is a `blocksonly` mode already available starting in Bitcoin Core v0.12.  Blocks-only mode only receives transactions when they're included in a block, so there is no extra transaction overhead.
 
 ## What is the timeline on coding, testing, reviewing and deploying compact block propagation?
 
@@ -53,17 +77,23 @@ The first version of compact blocks has been assigned BIP152, has a working impl
 
 ## How can this be adapted for miners?
 
-In order to get miner adoption additional improvements to the compact block scheme must be made. These are two-fold: First, replace TCP transmission of block information with UDP transmission. Second, handle dropped packets by using forward error correction (FEC) codes. 
+In order to get miner adoption additional improvements to the compact block scheme must be made. These are two-fold: 
 
-UDP transmission allows data to be sent by the server and digested by the client as fast as the path allows, without worrying about intermittent dropped packets. A client would rather receive packets out of order to construct the block as fast as possible but TCP does not allow this. In order to deal with the dropped packets, FEC codes will be employed. A FEC code is a method of transforming the data into a redundant code, allowing lossless transmission of the original data as long as any of k-of-n of the packets arrive at its destination, where k is not much larger than the original size of the data.
+- First, replace TCP transmission of block information with UDP transmission.
 
-This setup allows serving peers to send blocks immediately upon receipt, and have clients reconstruct blocks being streamed from multiple peers simultaneously. All of this work will continue to build on the compact blocks work already completed. This is a medium-term extension, and development can be watched here: 
+- Second, handle dropped packets by using forward error correction (FEC) codes. 
 
-- Reference implelementation: <https://github.com/TheBlueMatt/bitcoin/tree/udp-wip>
+UDP transmission allows data to be sent by the server and digested by the client as fast as the network path allows, without worrying about intermittent dropped packets. A client would rather receive packets out of order to construct the block as fast as possible but TCP does not allow this.
+
+In order to deal with any dropped packets, FEC codes will be employed. A FEC code is a method of transforming the data into a redundant code, allowing lossless transmission of the original data as long as a certain percentage of the packets arrive at its destination, where that percentage is only slightly larger than the original size of the data.
+
+This would allow a node to begin sending a block as soon as it receives them, and allow the recipients to reconstruct blocks being streamed from multiple peers simultaneously. All of this work will continue to build on the compact blocks work already completed. This is a medium-term extension, and development can be watched here: 
+
+- Reference implementation: <https://github.com/TheBlueMatt/bitcoin/tree/udp-wip>
 
 ## Is this new?
 
-The idea of using BIP37 filteredblocks to more efficiently transmit blocks was proposed a number of  years ago. It was also implemented by Pieter Wuille (sipa) in 2013 but he found the overhead made it slow down the transfer.
+The idea of using bloom filters (such as those used in [BIP37][] filteredblocks) to more efficiently transmit blocks was proposed a number of years ago. It was also implemented by Pieter Wuille (sipa) in 2013 but he found the overhead made it slow down the transfer.
 
 {% highlight text %}
 [#bitcoin-dev, public log (excerpts)]
@@ -101,3 +131,4 @@ As was noted in the excerpt, simply extending the protocol to support sending in
 - <http://diyhpl.us/~bryan/irc/bitcoin/weak-blocks-links.2016-05-09.txt>
 - <http://diyhpl.us/~bryan/irc/bitcoin/propagation-links.2016-05-09.txt>
 
+{% include _references.md %}
